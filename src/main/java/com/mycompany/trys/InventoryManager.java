@@ -262,7 +262,7 @@ public class InventoryManager extends JFrame implements ActionListener {
         }
         return null;
     }
-
+    
     public Product searchBySupplier(String supplierId) {
         Product temp = head;
         while (temp != null) {
@@ -271,33 +271,20 @@ public class InventoryManager extends JFrame implements ActionListener {
         }
         return null;
     }
-
-    public Product searchByPrice(double price) {
-        Product current = root;
-        while (current != null) {
-            if (Double.compare(price, current.getPrice()) == 0) return current;
-            if (price < current.getPrice()) {
-                current = current.left;
-            } else {
-                current = current.right;
-            }
-        }
-        return null;
-    }
-
+    
     public ArrayList<Product> getProductsSortedByPrice() {
         ArrayList<Product> list = new ArrayList<>();
         inOrder(root, list);
         return list;
     }
-
+    
     private void inOrder(Product node, ArrayList<Product> list) {
         if (node == null) return;
         inOrder(node.left, list);
         list.add(node);
         inOrder(node.right, list);
     }
-
+    
     public boolean hasLowStock(int threshold) {
         Product temp = head;
         while (temp != null) {
@@ -457,7 +444,7 @@ public class InventoryManager extends JFrame implements ActionListener {
             } else {
                 JOptionPane.showMessageDialog(this, "Please fill in all product details first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
-        } else if (e.getSource() == btnUpdate) {
+        } else if (e.getSource() == btnUpdate){
             int rowSelected = table.getSelectedRow();
             if (rowSelected != -1) {
                 String PID = txtFPID.getText().trim();
@@ -503,27 +490,23 @@ public class InventoryManager extends JFrame implements ActionListener {
             } else {
                 JOptionPane.showMessageDialog(this, "Please select a product first before deleting", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
-        } else if (e.getSource() == btnSearch) {
+        } else if (e.getSource() == btnSearch){
             String PID = txtFPID.getText().trim();
             String Name = txtFName.getText().trim();
             String SID = txtFSID.getText().trim();
-            String Price = txtFPrice.getText().trim();
-
-            if (!PID.isEmpty() || !Name.isEmpty() || !SID.isEmpty() || !Price.isEmpty()) {
+            
+            if (!PID.isEmpty() || !Name.isEmpty() || !SID.isEmpty()){
                 try {
                     Product found = null;
                     if (!PID.isEmpty()) {
                         found = searchById(Integer.parseInt(PID));
                         txtFPID.setText("");
-                    } else if (!Price.isEmpty()) {
-                        found = searchByPrice(Double.parseDouble(Price));
-                        txtFPrice.setText("");
-                    } else if (!SID.isEmpty()) {
-                        found = searchBySupplier(SID);
-                        txtFSID.setText("");
-                    } else {
+                    }else if(!Name.isEmpty()){
                         found = searchByName(Name);
                         txtFName.setText("");
+                    }else if (!SID.isEmpty()) {
+                        found = searchBySupplier(SID);
+                        txtFSID.setText("");
                     }
 
                     if (found != null) {
@@ -537,7 +520,7 @@ public class InventoryManager extends JFrame implements ActionListener {
                     JOptionPane.showMessageDialog(this, "Product ID must be a whole number and Price must be a number", "Input Error", JOptionPane.ERROR_MESSAGE);
                 }
             } else {
-                JOptionPane.showMessageDialog(this, "Enter a Product ID, Name, Supplier ID, or Price to search", "ERROR Message", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Enter a Product ID, Name,or Supplier ID to search", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
         } else if (e.getSource() == btnVReport) {
             if (head != null) {
