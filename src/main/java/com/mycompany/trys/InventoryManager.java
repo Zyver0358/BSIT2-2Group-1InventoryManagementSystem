@@ -4,7 +4,6 @@
  */
 package com.mycompany.trys;
 
-import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.HashMap;
@@ -500,7 +499,6 @@ public class InventoryManager extends JFrame implements ActionListener {
 
             txtReport = new JTextArea();
             txtReport.setEditable(false);
-            txtReport.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
             reportScroll = new JScrollPane(txtReport);
             reportScroll.setBounds(10, 50, 615, 300);
             add(reportScroll);
