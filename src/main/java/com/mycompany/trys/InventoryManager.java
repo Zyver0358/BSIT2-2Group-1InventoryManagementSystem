@@ -7,7 +7,6 @@ package com.mycompany.trys;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.ArrayList;
 import java.util.HashMap;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -285,19 +284,6 @@ public class InventoryManager extends JFrame implements ActionListener {
         return null;
     }
     
-    public ArrayList<Product> getProductsSortedByPrice() {
-        ArrayList<Product> list = new ArrayList<>();
-        inOrder(root, list);
-        return list;
-    }
-    
-    private void inOrder(Product node, ArrayList<Product> list) {
-        if (node == null) return;
-        inOrder(node.left, list);
-        list.add(node);
-        inOrder(node.right, list);
-    }
-    
     public boolean hasLowStock(int threshold) {
         Product temp = head;
         while (temp != null) {
@@ -363,33 +349,37 @@ public class InventoryManager extends JFrame implements ActionListener {
     }
 
     public String generateRestockReport(int threshold, int targetLevel) {
-        StringBuilder report = new StringBuilder("=== RESTOCK REPORT (Qty <= " + threshold
-                + ", restock up to " + targetLevel + ") ===\n\n");
-        boolean found = false;
-        double totalCost = 0;
-
-        for (Product p : getProductsSortedByPrice()) {
-            if (p.getQuantity() <= threshold) {
-                int toOrder = targetLevel - p.getQuantity();
-                double cost = toOrder * p.getPrice();
-                totalCost += cost;
-                report.append("ID: ").append(p.getId())
-                      .append(" | Name: ").append(p.getName())
-                      .append(" | Qty: ").append(p.getQuantity())
-                      .append(" | Order: ").append(toOrder)
-                      .append(" | Supplier: ").append(p.getSupplier())
-                      .append(" (").append(supplierNameOf(p.getSupplier())).append(")")
-                      .append(" | Est. Cost: PHP ").append(String.format("%.2f", cost))
-                      .append("\n");
-                found = true;
-            }
-        }
-
-        if (!found) {
+        if (!hasLowStock(threshold)) {
             return "No products need restocking (Quantity > " + threshold + ").";
         }
+        StringBuilder report = new StringBuilder("=== RESTOCK REPORT (Qty <= " + threshold
+                + ", restock up to " + targetLevel + ") ===\n\n");
+        double totalCost = restockInOrder(root, report, threshold, targetLevel);
         report.append("\nTotal Estimated Cost: PHP ").append(String.format("%.2f", totalCost));
         return report.toString();
+    }
+    
+    private double restockInOrder(Product node, StringBuilder report, int threshold, int targetLevel) {
+        if (node == null) return 0;
+
+        double total = restockInOrder(node.left, report, threshold, targetLevel);
+
+        if (node.getQuantity() <= threshold) {
+            int toOrder = targetLevel - node.getQuantity();
+            double cost = toOrder * node.getPrice();
+            total += cost;
+            report.append("ID: ").append(node.getId())
+                  .append(" | Name: ").append(node.getName())
+                  .append(" | Qty: ").append(node.getQuantity())
+                  .append(" | Order: ").append(toOrder)
+                  .append(" | Supplier: ").append(node.getSupplier())
+                  .append(" (").append(supplierNameOf(node.getSupplier())).append(")")
+                  .append(" | Est. Cost: PHP ").append(String.format("%.2f", cost))
+                  .append("\n");
+        }
+
+        total += restockInOrder(node.right, report, threshold, targetLevel);
+        return total;
     }
     
     private void refreshTable() {
