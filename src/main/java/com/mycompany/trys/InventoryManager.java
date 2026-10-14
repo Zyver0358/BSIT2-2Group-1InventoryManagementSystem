@@ -272,6 +272,19 @@ public class InventoryManager extends JFrame implements ActionListener {
         return null;
     }
     
+    public Product searchByPrice(double price) {
+        Product current = root;
+        while (current != null) {
+            if (Double.compare(price, current.getPrice()) == 0) return current;
+            if (price < current.getPrice()) {
+                current = current.left;
+            } else {
+                current = current.right;
+            }
+        }
+        return null;
+    }
+    
     public ArrayList<Product> getProductsSortedByPrice() {
         ArrayList<Product> list = new ArrayList<>();
         inOrder(root, list);
@@ -494,8 +507,9 @@ public class InventoryManager extends JFrame implements ActionListener {
             String PID = txtFPID.getText().trim();
             String Name = txtFName.getText().trim();
             String SID = txtFSID.getText().trim();
+            String Price = txtFPrice.getText().trim();
             
-            if (!PID.isEmpty() || !Name.isEmpty() || !SID.isEmpty()){
+            if (!PID.isEmpty() || !Name.isEmpty() || !SID.isEmpty() || !Price.isEmpty()){
                 try {
                     Product found = null;
                     if (!PID.isEmpty()) {
@@ -507,6 +521,9 @@ public class InventoryManager extends JFrame implements ActionListener {
                     }else if (!SID.isEmpty()) {
                         found = searchBySupplier(SID);
                         txtFSID.setText("");
+                    }else if (!Price.isEmpty()) {
+                        found = searchByPrice(Double.parseDouble(Price));
+                        txtFPrice.setText("");
                     }
 
                     if (found != null) {
