@@ -8,6 +8,7 @@ import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.HashMap;
+import java.util.LinkedList;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 
@@ -20,7 +21,7 @@ public class InventoryManager extends JFrame implements ActionListener {
     public static final int LOW_STOCK_THRESHOLD = 5;
     public static final int RESTOCK_TARGET = 20;
 
-    private Product head;
+    private LinkedList<Product> productList;
     private Product root;
     private HashMap<String, Supplier> supplierMap;
 
@@ -32,8 +33,8 @@ public class InventoryManager extends JFrame implements ActionListener {
     private JLabel lbHeader, lbIM, lbPDT, lbPID, lbName, lbQuantity, lbSID, lbPrice, lbSReport, lbReport;
 
     InventoryManager() {
-
-        head = null;
+        
+        productList = new LinkedList<>();
         root = null;
         supplierMap = new HashMap<>();
 
@@ -168,15 +169,7 @@ public class InventoryManager extends JFrame implements ActionListener {
         if (searchById(p.getId()) != null) {
             throw new IllegalArgumentException("Product ID " + p.getId() + " already exists.");
         }
-        if (head == null) {
-            head = p;
-        } else {
-            Product temp = head;
-            while (temp.next != null) {
-                temp = temp.next;
-            }
-            temp.next = p;
-        }
+        productList.add(p);
         p.left = null;
         p.right = null;
         root = insertBST(root, p);
@@ -194,12 +187,10 @@ public class InventoryManager extends JFrame implements ActionListener {
 
     private void rebuildBST() {
         root = null;
-        Product temp = head;
-        while (temp != null) {
-            temp.left = null;
-            temp.right = null;
-            root = insertBST(root, temp);
-            temp = temp.next;
+        for (Product p : productList) {
+            p.left = null;
+            p.right = null;
+            root = insertBST(root, p);
         }
     }
 
@@ -218,55 +209,30 @@ public class InventoryManager extends JFrame implements ActionListener {
     }
 
     public boolean deleteProduct(int id) {
-        if (head == null) return false;
-
-        if (head.getId() == id) {
-            Product removed = head;
-            head = head.next;
-            removed.next = null;
-            rebuildBST();
-            return true;
-        }
-
-        Product curr = head;
-        Product prev = null;
-        while (curr != null && curr.getId() != id) {
-            prev = curr;
-            curr = curr.next;
-        }
-
-        if (curr != null) {
-            prev.next = curr.next;
-            curr.next = null;
-            rebuildBST();
-            return true;
-        }
-        return false;
+        Product p = searchById(id);
+        if (p == null) return false;
+        productList.remove(p);
+        rebuildBST();
+        return true;
     }
 
     public Product searchById(int id) {
-        Product temp = head;
-        while (temp != null) {
-            if (temp.getId() == id) return temp;
-            temp = temp.next;
+        for (Product p : productList) {
+            if (p.getId() == id) return p;
         }
         return null;
     }
 
     public Product searchByName(String name) {
-        Product temp = head;
-        while (temp != null) {
-            if (temp.getName().equalsIgnoreCase(name)) return temp;
-            temp = temp.next;
+        for (Product p : productList) {
+            if (p.getName().equalsIgnoreCase(name)) return p;
         }
         return null;
     }
     
     public Product searchBySupplier(String supplierId) {
-        Product temp = head;
-        while (temp != null) {
-            if (temp.getSupplier().equalsIgnoreCase(supplierId)) return temp;
-            temp = temp.next;
+        for (Product p : productList) {
+            if (p.getSupplier().equalsIgnoreCase(supplierId)) return p;
         }
         return null;
     }
@@ -285,69 +251,35 @@ public class InventoryManager extends JFrame implements ActionListener {
     }
     
     public boolean hasLowStock(int threshold) {
-        Product temp = head;
-        while (temp != null) {
-            if (temp.getQuantity() <= threshold) {
-                return true;
-            }
-            temp = temp.next;
+        for (Product p : productList) {
+            if (p.getQuantity() <= threshold) return true;
         }
         return false;
     }
     
-    public void addSupplier(Supplier s) {
-        supplierMap.put(s.getId(), s);
-    }
-
-    public boolean hasSupplier(String supplierId) {
-        return supplierMap.containsKey(supplierId);
-    }
-
-    public void ensureSupplier(String supplierId) {
-        if (!supplierMap.containsKey(supplierId)) {
-            supplierMap.put(supplierId, new Supplier(supplierId, "N/A", "N/A"));
-        }
-    }
-
-    public boolean updateSupplier(String supplierId, String name, String contactInfo) {
-        Supplier s = supplierMap.get(supplierId);
-        if (s != null) {
-            s.setName(name);
-            s.setContactInfo(contactInfo);
-            return true;
-        }
-        return false;
-    }
-
-    public Supplier getSupplier(String supplierId) {
-        return supplierMap.get(supplierId);
-    }
-
     private String supplierNameOf(String supplierId) {
         Supplier s = supplierMap.get(supplierId);
         return (s == null) ? "N/A" : s.getName();
     }
-    
+ 
     public String generateLowStockReport(int threshold) {
         StringBuilder report = new StringBuilder("=== LOW STOCK REPORT (Qty <= " + threshold + ") ===\n\n");
-        Product temp = head;
         boolean found = false;
-        while (temp != null) {
-            if (temp.getQuantity() <= threshold) {
-                report.append("ID: ").append(temp.getId())
-                      .append(" | Name: ").append(temp.getName())
-                      .append(" | Qty: ").append(temp.getQuantity())
-                      .append(" | Supplier: ").append(temp.getSupplier())
-                      .append(" (").append(supplierNameOf(temp.getSupplier())).append(")")
-                      .append(" | Price: PHP ").append(String.format("%.2f", temp.getPrice()))
+        for (Product p : productList) {
+            if (p.getQuantity() <= threshold) {
+                report.append("ID: ").append(p.getId())
+                      .append(" | Name: ").append(p.getName())
+                      .append(" | Qty: ").append(p.getQuantity())
+                      .append(" | Supplier: ").append(p.getSupplier())
+                      .append(" (").append(supplierNameOf(p.getSupplier())).append(")")
+                      .append(" | Price: PHP ").append(String.format("%.2f", p.getPrice()))
                       .append("\n");
                 found = true;
             }
-            temp = temp.next;
         }
         return found ? report.toString() : "All products are fully stocked (Quantity > " + threshold + ").";
     }
-
+ 
     public String generateRestockReport(int threshold, int targetLevel) {
         if (!hasLowStock(threshold)) {
             return "No products need restocking (Quantity > " + threshold + ").";
@@ -358,12 +290,12 @@ public class InventoryManager extends JFrame implements ActionListener {
         report.append("\nTotal Estimated Cost: PHP ").append(String.format("%.2f", totalCost));
         return report.toString();
     }
-    
+
     private double restockInOrder(Product node, StringBuilder report, int threshold, int targetLevel) {
         if (node == null) return 0;
-
+ 
         double total = restockInOrder(node.left, report, threshold, targetLevel);
-
+ 
         if (node.getQuantity() <= threshold) {
             int toOrder = targetLevel - node.getQuantity();
             double cost = toOrder * node.getPrice();
@@ -377,47 +309,9 @@ public class InventoryManager extends JFrame implements ActionListener {
                   .append(" | Est. Cost: PHP ").append(String.format("%.2f", cost))
                   .append("\n");
         }
-
+ 
         total += restockInOrder(node.right, report, threshold, targetLevel);
         return total;
-    }
-    
-    private void refreshTable() {
-        tableModel.setRowCount(0);
-        Product temp = head;
-        while (temp != null) {
-            tableModel.addRow(new Object[]{temp.getId(), temp.getName(), temp.getQuantity(), temp.getSupplier(), temp.getPrice()});
-            temp = temp.next;
-        }
-        refreshReportLabel();
-    }
-
-    private void refreshReportLabel() {
-        if (head == null) {
-            lbReport.setText(" [No data]");
-        } else if (hasLowStock(LOW_STOCK_THRESHOLD)) {
-            lbReport.setText(" [low-stock]");
-        } else {
-            lbReport.setText(" [Fully Stocked]");
-        }
-    }
-
-    private void clearFields() {
-        txtFPID.setText("");
-        txtFName.setText("");
-        txtFQuantity.setText("");
-        txtFSID.setText("");
-        txtFPrice.setText("");
-    }
-
-    private void selectRowById(int id) {
-        for (int i = 0; i < tableModel.getRowCount(); i++) {
-            if (tableModel.getValueAt(i, 0).toString().equals(String.valueOf(id))) {
-                table.setRowSelectionInterval(i, i);
-                table.scrollRectToVisible(table.getCellRect(i, 0, true));
-                return;
-            }
-        }
     }
 
     @Override
@@ -434,11 +328,26 @@ public class InventoryManager extends JFrame implements ActionListener {
                     int id = Integer.parseInt(PID);
                     int qty = Integer.parseInt(Quanty);
                     double price = Double.parseDouble(Price);
-
                     addProduct(new Product(id, Name, qty, SID, price));
-                    ensureSupplier(SID);
-                    refreshTable();
-                    clearFields();
+                    if (!supplierMap.containsKey(SID)) {
+                        supplierMap.put(SID, new Supplier(SID, "N/A", "N/A"));
+                    }
+                    tableModel.setRowCount(0);
+                    for (Product p : productList) {
+                        tableModel.addRow(new Object[]{p.getId(), p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice()});
+                    }
+                    if (productList.isEmpty()) {
+                        lbReport.setText(" [No data]");
+                    } else if (hasLowStock(LOW_STOCK_THRESHOLD)) {
+                        lbReport.setText(" [low-stock]");
+                    } else {
+                        lbReport.setText(" [Fully Stocked]");
+                    }
+                    txtFPID.setText("");
+                    txtFName.setText("");
+                    txtFQuantity.setText("");
+                    txtFSID.setText("");
+                    txtFPrice.setText("");
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(this, "Product ID and Quantity must be whole numbers, Price must be a number", "Input Error", JOptionPane.ERROR_MESSAGE);
                 } catch (IllegalArgumentException ex) {
@@ -462,14 +371,27 @@ public class InventoryManager extends JFrame implements ActionListener {
                         int id = Integer.parseInt(PID);
                         int qty = Integer.parseInt(Quanty);
                         double price = Double.parseDouble(Price);
-
                         if (id != selectedId) {
                             JOptionPane.showMessageDialog(this, "Product ID cannot be changed. Use the ID of the selected row", "Input Error", JOptionPane.ERROR_MESSAGE);
                         } else {
                             updateProduct(id, Name, qty, SID, price);
-                            ensureSupplier(SID);
-                            refreshTable();
-                            clearFields();
+                            if (!supplierMap.containsKey(SID)) {
+                                supplierMap.put(SID, new Supplier(SID, "N/A", "N/A"));
+                            }tableModel.setRowCount(0);
+                            for (Product p : productList) {
+                                tableModel.addRow(new Object[]{p.getId(), p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice()});
+                            }if (productList.isEmpty()) {
+                                lbReport.setText(" [No data]");
+                            } else if (hasLowStock(LOW_STOCK_THRESHOLD)) {
+                                lbReport.setText(" [low-stock]");
+                            } else {
+                                lbReport.setText(" [Fully Stocked]");
+                            }
+                            txtFPID.setText("");
+                            txtFName.setText("");
+                            txtFQuantity.setText("");
+                            txtFSID.setText("");
+                            txtFPrice.setText("");
                             JOptionPane.showMessageDialog(this, "Product Info has been updated");
                         }
                     } catch (NumberFormatException ex) {
@@ -488,7 +410,16 @@ public class InventoryManager extends JFrame implements ActionListener {
             if (indexSelected != -1) {
                 int id = Integer.parseInt(tableModel.getValueAt(indexSelected, 0).toString());
                 deleteProduct(id);
-                refreshTable();
+                tableModel.setRowCount(0);
+                for (Product p : productList) {
+                    tableModel.addRow(new Object[]{p.getId(), p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice()});
+                }if (productList.isEmpty()) {
+                    lbReport.setText(" [No data]");
+                } else if (hasLowStock(LOW_STOCK_THRESHOLD)) {
+                    lbReport.setText(" [low-stock]");
+                } else {
+                    lbReport.setText(" [Fully Stocked]");
+                }
                 JOptionPane.showMessageDialog(this, "Product Info has been deleted");
             } else {
                 JOptionPane.showMessageDialog(this, "Please select a product first before deleting", "ERROR Message", JOptionPane.ERROR_MESSAGE);
@@ -517,20 +448,26 @@ public class InventoryManager extends JFrame implements ActionListener {
                     }
 
                     if (found != null) {
-                        selectRowById(found.getId());
+                        for (int i = 0; i < tableModel.getRowCount(); i++) {
+                            if (tableModel.getValueAt(i, 0).toString().equals(String.valueOf(found.getId()))) {
+                                table.setRowSelectionInterval(i, i);
+                                table.scrollRectToVisible(table.getCellRect(i, 0, true));
+                                break;
+                            }
+                        }
                         JOptionPane.showMessageDialog(this, "Match found!");
-                    } else {
+                    }else{
                         table.clearSelection();
                         JOptionPane.showMessageDialog(this, "No matching product found!", "Input Error", JOptionPane.ERROR_MESSAGE);
                     }
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(this, "Product ID must be a whole number and Price must be a number", "Input Error", JOptionPane.ERROR_MESSAGE);
                 }
-            } else {
+            }else{
                 JOptionPane.showMessageDialog(this, "Enter a Product ID, Name,or Supplier ID to search", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
-        } else if (e.getSource() == btnVReport) {
-            if (head != null) {
+        }else if (e.getSource() == btnVReport) {
+            if (!productList.isEmpty()) {
                 new ReportWindow().setVisible(true);
             } else {
                 JOptionPane.showMessageDialog(this, "Please add a product first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
@@ -648,20 +585,10 @@ public class InventoryManager extends JFrame implements ActionListener {
             btnAddSupplier.addActionListener(this);
             btnUpdateSupplier.addActionListener(this);
 
-            refreshSupplierTable();
-        }
-
-        private void refreshSupplierTable() {
             supplierModel.setRowCount(0);
             for (Supplier s : supplierMap.values()) {
                 supplierModel.addRow(new Object[]{s.getId(), s.getName(), s.getContactInfo()});
             }
-        }
-
-        private void clearSupplierFields() {
-            txtSID.setText("");
-            txtName.setText("");
-            txtContact.setText("");
         }
 
         @Override
@@ -670,14 +597,18 @@ public class InventoryManager extends JFrame implements ActionListener {
                 String SID = txtSID.getText().trim();
                 String sName = txtName.getText().trim();
                 String sContact = txtContact.getText().trim();
-
                 if (!SID.isEmpty() && !sName.isEmpty() && !sContact.isEmpty()) {
-                    if (hasSupplier(SID)) {
+                    if (supplierMap.containsKey(SID)) {
                         JOptionPane.showMessageDialog(this, "Supplier ID already exists. Select it and use Update instead", "ERROR Message", JOptionPane.ERROR_MESSAGE);
                     } else {
-                        addSupplier(new Supplier(SID, sName, sContact));
-                        refreshSupplierTable();
-                        clearSupplierFields();
+                        supplierMap.put(SID, new Supplier(SID, sName, sContact));
+                        supplierModel.setRowCount(0);
+                        for (Supplier s : supplierMap.values()) {
+                            supplierModel.addRow(new Object[]{s.getId(), s.getName(), s.getContactInfo()});
+                        }
+                        txtSID.setText("");
+                        txtName.setText("");
+                        txtContact.setText("");
                     }
                 } else {
                     JOptionPane.showMessageDialog(this, "Please enter all supplier details first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
@@ -687,12 +618,18 @@ public class InventoryManager extends JFrame implements ActionListener {
                 if (selectedRow != -1) {
                     String sName = txtName.getText().trim();
                     String sContact = txtContact.getText().trim();
-
                     if (!sName.isEmpty() && !sContact.isEmpty()) {
                         String SID = supplierModel.getValueAt(selectedRow, 0).toString();
-                        updateSupplier(SID, sName, sContact);
-                        refreshSupplierTable();
-                        clearSupplierFields();
+                        Supplier sup = supplierMap.get(SID);
+                        sup.setName(sName);
+                        sup.setContactInfo(sContact);
+                        supplierModel.setRowCount(0);
+                        for (Supplier s : supplierMap.values()) {
+                            supplierModel.addRow(new Object[]{s.getId(), s.getName(), s.getContactInfo()});
+                        }
+                        txtSID.setText("");
+                        txtName.setText("");
+                        txtContact.setText("");
                     } else {
                         JOptionPane.showMessageDialog(this, "Please enter the new name and contact info first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
                     }
