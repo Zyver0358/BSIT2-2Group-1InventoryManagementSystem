@@ -6,11 +6,16 @@ package ds.trys;
 
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLIntegrityConstraintViolationException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import javax.swing.*;
-import static javax.swing.WindowConstants.DISPOSE_ON_CLOSE;
-import static javax.swing.WindowConstants.EXIT_ON_CLOSE;
 import javax.swing.table.DefaultTableModel;
 
 /**
@@ -25,16 +30,20 @@ public class InventoryManager extends JFrame implements ActionListener {
     private LinkedList<Product> productList;
     private Product root;
     private HashMap<String, Supplier> supplierMap;
+    private String currentUserRole;
+    private String currentUsername;
+    private ArrayList<JFrame> childWindows = new ArrayList<>();
 
     private DefaultTableModel tableModel;
     private JTable table;
     private JScrollPane scrollPane;
     private JTextField txtFPID, txtFName, txtFQuantity, txtFSID, txtFPrice;
-    private JButton btnAdd, btnUpdate, btnDelete, btnSearch, btnVReport, btnVSupplier;
+    private JButton btnAdd, btnUpdate, btnDelete, btnSearch, btnVReport, btnVSupplier, btnStock, btnUsers, btnRefresh;
     private JLabel lbHeader, lbIM, lbPDT, lbPID, lbName, lbQuantity, lbSID, lbPrice, lbSReport, lbReport;
 
-    InventoryManager() {
-        
+    public InventoryManager(String role, String username) {
+        this.currentUserRole = role;
+        this.currentUsername = username;
         productList = new LinkedList<>();
         root = null;
         supplierMap = new HashMap<>();
@@ -47,10 +56,11 @@ public class InventoryManager extends JFrame implements ActionListener {
             }
         };
 
-        setTitle("Inventory Management System");
-        setSize(900, 380);
+        String titleExtra = isAdmin() ? " [Admin - Full Control]" : " [Staff - View, Search & Stock Transactions]";
+        setTitle("Inventory Management System" + titleExtra);
+        setSize(900, 410);
         setLayout(null);
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setLocationRelativeTo(null);
 
         table = new JTable(tableModel);
@@ -111,11 +121,11 @@ public class InventoryManager extends JFrame implements ActionListener {
         add(lbPrice);
 
         lbSReport = new JLabel("Stock Report:");
-        lbSReport.setBounds(440, 280, 100, 30);
+        lbSReport.setBounds(440, 265, 100, 30);
         add(lbSReport);
 
         lbReport = new JLabel(" [No data]");
-        lbReport.setBounds(530, 280, 120, 30);
+        lbReport.setBounds(530, 265, 120, 30);
         add(lbReport);
 
         btnAdd = new JButton("ADD");
@@ -134,23 +144,140 @@ public class InventoryManager extends JFrame implements ActionListener {
         btnSearch.setBounds(295, 280, 85, 30);
         add(btnSearch);
 
+        btnStock = new JButton("Stock-In / Stock-Out");
+        btnStock.setBounds(10, 325, 170, 30);
+        add(btnStock);
+
+        btnUsers = new JButton("Manage Users");
+        btnUsers.setBounds(190, 325, 130, 30);
+        add(btnUsers);
+
         btnVReport = new JButton("View Report");
-        btnVReport.setBounds(620, 280, 120, 30);
+        btnVReport.setBounds(440, 325, 130, 30);
         add(btnVReport);
 
         btnVSupplier = new JButton("View Supplier");
-        btnVSupplier.setBounds(750, 280, 120, 30);
+        btnVSupplier.setBounds(580, 325, 130, 30);
         add(btnVSupplier);
+
+        btnRefresh = new JButton("Refresh");
+        btnRefresh.setBounds(720, 325, 100, 30);
+        add(btnRefresh);
 
         btnAdd.addActionListener(this);
         btnUpdate.addActionListener(this);
         btnDelete.addActionListener(this);
         btnSearch.addActionListener(this);
+        btnStock.addActionListener(this);
+        btnUsers.addActionListener(this);
         btnVReport.addActionListener(this);
         btnVSupplier.addActionListener(this);
+        btnRefresh.addActionListener(this);
+
+        if (!isAdmin()) {
+            btnAdd.setEnabled(false);
+            btnUpdate.setEnabled(false);
+            btnDelete.setEnabled(false);
+            btnUsers.setVisible(false);
+        }
+
+        loadDataFromDatabase();
     }
-    
-    private void validate(String name, int qty, String supplierId, double price) {
+
+    boolean isAdmin() {
+        return "Admin".equalsIgnoreCase(currentUserRole);
+    }
+
+    public LinkedList<Product> getProducts() {
+        return productList;
+    }
+
+    public Collection<Supplier> getSuppliers() {
+        return supplierMap.values();
+    }
+
+    public String getCurrentUsername() {
+        return currentUsername;
+    }
+
+    private void openChild(JFrame frame) {
+        childWindows.add(frame);
+        frame.setVisible(true);
+    }
+
+    @Override
+    public void dispose() {
+        for (JFrame f : childWindows) {
+            f.dispose();
+        }
+        super.dispose();
+    }
+
+    public void loadDataFromDatabase() {
+        productList.clear();
+        supplierMap.clear();
+        root = null;
+
+        try (Connection conn = DBConnection.getConnection()) {
+            String supSql = "SELECT * FROM suppliers ORDER BY supplier_id";
+            try (PreparedStatement pstmt = conn.prepareStatement(supSql);
+                 ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String id = rs.getString("supplier_id");
+                    String name = rs.getString("name");
+                    String contact = rs.getString("contact_info");
+                    supplierMap.put(id, new Supplier(id, name, contact));
+                }
+            }
+
+            String prodSql = "SELECT * FROM products ORDER BY product_id";
+            try (PreparedStatement pstmt = conn.prepareStatement(prodSql);
+                 ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    int id = rs.getInt("product_id");
+                    String name = rs.getString("name");
+                    int qty = rs.getInt("quantity");
+                    String supId = rs.getString("supplier_id");
+                    double price = rs.getDouble("price");
+
+                    Product p = new Product(id, name, qty, supId, price);
+                    productList.add(p);
+                    root = insertBST(root, p);
+                }
+            }
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Database Load Error: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+        refreshTable();
+    }
+
+    private void refreshTable() {
+        tableModel.setRowCount(0);
+        for (Product p : productList) {
+            tableModel.addRow(new Object[]{p.getId(), p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice()});
+        }
+        updateStockLabelStatus();
+    }
+
+    private void updateStockLabelStatus() {
+        if (productList.isEmpty()) {
+            lbReport.setText(" [No data]");
+        } else if (hasLowStock(LOW_STOCK_THRESHOLD)) {
+            lbReport.setText(" [low-stock]");
+        } else {
+            lbReport.setText(" [Fully Stocked]");
+        }
+    }
+
+    private void clearProductFields() {
+        txtFPID.setText("");
+        txtFName.setText("");
+        txtFQuantity.setText("");
+        txtFSID.setText("");
+        txtFPrice.setText("");
+    }
+
+    private void validateProduct(String name, int qty, String supplierId, double price) {
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Product name cannot be empty.");
         }
@@ -165,15 +292,38 @@ public class InventoryManager extends JFrame implements ActionListener {
         }
     }
 
-    public void addProduct(Product p) {
-        validate(p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice());
-        if (searchById(p.getId()) != null) {
-            throw new IllegalArgumentException("Product ID " + p.getId() + " already exists.");
+    private boolean supplierExists(Connection conn, String supplierId) throws SQLException {
+        String sql = "SELECT supplier_id FROM suppliers WHERE supplier_id = ?";
+        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, supplierId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
         }
-        productList.add(p);
-        p.left = null;
-        p.right = null;
-        root = insertBST(root, p);
+    }
+
+    public void addProduct(Product p) {
+        validateProduct(p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice());
+
+        try (Connection conn = DBConnection.getConnection()) {
+            if (!supplierExists(conn, p.getSupplier())) {
+                throw new IllegalArgumentException("Supplier ID '" + p.getSupplier() + "' does not exist. Add the supplier first.");
+            }
+
+            String sql = "INSERT INTO products (product_id, name, quantity, supplier_id, price) VALUES (?, ?, ?, ?, ?)";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, p.getId());
+            pstmt.setString(2, p.getName());
+            pstmt.setInt(3, p.getQuantity());
+            pstmt.setString(4, p.getSupplier());
+            pstmt.setDouble(5, p.getPrice());
+            pstmt.executeUpdate();
+        } catch (SQLIntegrityConstraintViolationException e) {
+            throw new IllegalArgumentException("Product ID " + p.getId() + " already exists.");
+        } catch (SQLException e) {
+            throw new RuntimeException("Database error during insert: " + e.getMessage());
+        }
+        loadDataFromDatabase();
     }
 
     private Product insertBST(Product current, Product p) {
@@ -186,35 +336,42 @@ public class InventoryManager extends JFrame implements ActionListener {
         return current;
     }
 
-    private void rebuildBST() {
-        root = null;
-        for (Product p : productList) {
-            p.left = null;
-            p.right = null;
-            root = insertBST(root, p);
-        }
-    }
-
     public boolean updateProduct(int id, String name, int qty, String supplier, double price) {
-        validate(name, qty, supplier, price);
-        Product p = searchById(id);
-        if (p != null) {
-            p.setName(name);
-            p.setQuantity(qty);
-            p.setSupplier(supplier);
-            p.setPrice(price);
-            rebuildBST();
-            return true;
+        validateProduct(name, qty, supplier, price);
+        int affected;
+
+        try (Connection conn = DBConnection.getConnection()) {
+            if (!supplierExists(conn, supplier)) {
+                throw new IllegalArgumentException("Supplier ID '" + supplier + "' does not exist. Add the supplier first.");
+            }
+
+            String sql = "UPDATE products SET name = ?, quantity = ?, supplier_id = ?, price = ? WHERE product_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, name);
+            pstmt.setInt(2, qty);
+            pstmt.setString(3, supplier);
+            pstmt.setDouble(4, price);
+            pstmt.setInt(5, id);
+            affected = pstmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Database update error: " + e.getMessage());
         }
-        return false;
+        loadDataFromDatabase();
+        return affected > 0;
     }
 
     public boolean deleteProduct(int id) {
-        Product p = searchById(id);
-        if (p == null) return false;
-        productList.remove(p);
-        rebuildBST();
-        return true;
+        int affected;
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql = "DELETE FROM products WHERE product_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, id);
+            affected = pstmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Database delete error: " + e.getMessage());
+        }
+        loadDataFromDatabase();
+        return affected > 0;
     }
 
     public Product searchById(int id) {
@@ -230,14 +387,14 @@ public class InventoryManager extends JFrame implements ActionListener {
         }
         return null;
     }
-    
+
     public Product searchBySupplier(String supplierId) {
         for (Product p : productList) {
             if (p.getSupplier().equalsIgnoreCase(supplierId)) return p;
         }
         return null;
     }
-    
+
     public Product searchByPrice(double price) {
         Product current = root;
         while (current != null) {
@@ -250,19 +407,124 @@ public class InventoryManager extends JFrame implements ActionListener {
         }
         return null;
     }
-    
+
+    public void addSupplier(Supplier s) {
+        if (s.getId().trim().isEmpty() || s.getName().trim().isEmpty() || s.getContactInfo().trim().isEmpty()) {
+            throw new IllegalArgumentException("Supplier ID, name and contact info cannot be empty.");
+        }
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql = "INSERT INTO suppliers (supplier_id, name, contact_info) VALUES (?, ?, ?)";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, s.getId());
+            pstmt.setString(2, s.getName());
+            pstmt.setString(3, s.getContactInfo());
+            pstmt.executeUpdate();
+        } catch (SQLIntegrityConstraintViolationException e) {
+            throw new IllegalArgumentException("Supplier ID '" + s.getId() + "' already exists.");
+        } catch (SQLException e) {
+            throw new RuntimeException("Database error adding supplier: " + e.getMessage());
+        }
+        loadDataFromDatabase();
+    }
+
+    public boolean updateSupplier(String id, String name, String contact) {
+        int affected;
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql = "UPDATE suppliers SET name = ?, contact_info = ? WHERE supplier_id = ?";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, name);
+            pstmt.setString(2, contact);
+            pstmt.setString(3, id);
+            affected = pstmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Database error updating supplier: " + e.getMessage());
+        }
+        loadDataFromDatabase();
+        return affected > 0;
+    }
+
+    public boolean deleteSupplier(String id) {
+        int affected;
+        try (Connection conn = DBConnection.getConnection()) {
+            PreparedStatement check = conn.prepareStatement("SELECT COUNT(*) FROM products WHERE supplier_id = ?");
+            check.setString(1, id);
+            ResultSet rs = check.executeQuery();
+            rs.next();
+            if (rs.getInt(1) > 0) {
+                throw new IllegalArgumentException("Cannot delete this supplier because products still use it.");
+            }
+
+            PreparedStatement pstmt = conn.prepareStatement("DELETE FROM suppliers WHERE supplier_id = ?");
+            pstmt.setString(1, id);
+            affected = pstmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Database error deleting supplier: " + e.getMessage());
+        }
+        loadDataFromDatabase();
+        return affected > 0;
+    }
+
+    private String supplierNameOf(String supplierId) {
+        Supplier s = supplierMap.get(supplierId);
+        return (s == null) ? "N/A" : s.getName();
+    }
+
+    public void recordTransaction(int productId, String type, int qty) {
+        if (qty <= 0) {
+            throw new IllegalArgumentException("Transaction quantity must be greater than zero.");
+        }
+
+        try (Connection conn = DBConnection.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                int affected;
+                if ("IN".equals(type)) {
+                    PreparedStatement pstmt = conn.prepareStatement("UPDATE products SET quantity = quantity + ? WHERE product_id = ?");
+                    pstmt.setInt(1, qty);
+                    pstmt.setInt(2, productId);
+                    affected = pstmt.executeUpdate();
+                } else {
+                    PreparedStatement pstmt = conn.prepareStatement("UPDATE products SET quantity = quantity - ? WHERE product_id = ? AND quantity >= ?");
+                    pstmt.setInt(1, qty);
+                    pstmt.setInt(2, productId);
+                    pstmt.setInt(3, qty);
+                    affected = pstmt.executeUpdate();
+                }
+
+                if (affected == 0) {
+                    PreparedStatement pstmt = conn.prepareStatement("SELECT quantity FROM products WHERE product_id = ?");
+                    pstmt.setInt(1, productId);
+                    ResultSet rs = pstmt.executeQuery();
+                    if (!rs.next()) {
+                        throw new IllegalArgumentException("Product ID " + productId + " was not found.");
+                    }
+                    throw new IllegalArgumentException("Not enough stock. Available quantity: " + rs.getInt("quantity"));
+                }
+
+                PreparedStatement ins = conn.prepareStatement("INSERT INTO transactions (product_id, type, quantity, username) VALUES (?, ?, ?, ?)");
+                ins.setInt(1, productId);
+                ins.setString(2, type);
+                ins.setInt(3, qty);
+                ins.setString(4, currentUsername);
+                ins.executeUpdate();
+                conn.commit();
+            } catch (SQLException | RuntimeException ex) {
+                conn.rollback();
+                throw ex;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Database error during transaction: " + e.getMessage());
+        }
+        loadDataFromDatabase();
+    }
+
     public boolean hasLowStock(int threshold) {
         for (Product p : productList) {
             if (p.getQuantity() <= threshold) return true;
         }
         return false;
     }
-    
-    private String supplierNameOf(String supplierId) {
-        Supplier s = supplierMap.get(supplierId);
-        return (s == null) ? "N/A" : s.getName();
-    }
- 
+
     public String generateLowStockReport(int threshold) {
         StringBuilder report = new StringBuilder("=== LOW STOCK REPORT (Qty <= " + threshold + ") ===\n\n");
         boolean found = false;
@@ -280,7 +542,7 @@ public class InventoryManager extends JFrame implements ActionListener {
         }
         return found ? report.toString() : "All products are fully stocked (Quantity > " + threshold + ").";
     }
- 
+
     public String generateRestockReport(int threshold, int targetLevel) {
         if (!hasLowStock(threshold)) {
             return "No products need restocking (Quantity > " + threshold + ").";
@@ -294,9 +556,9 @@ public class InventoryManager extends JFrame implements ActionListener {
 
     private double restockInOrder(Product node, StringBuilder report, int threshold, int targetLevel) {
         if (node == null) return 0;
- 
+
         double total = restockInOrder(node.left, report, threshold, targetLevel);
- 
+
         if (node.getQuantity() <= threshold) {
             int toOrder = targetLevel - node.getQuantity();
             double cost = toOrder * node.getPrice();
@@ -310,7 +572,7 @@ public class InventoryManager extends JFrame implements ActionListener {
                   .append(" | Est. Cost: PHP ").append(String.format("%.2f", cost))
                   .append("\n");
         }
- 
+
         total += restockInOrder(node.right, report, threshold, targetLevel);
         return total;
     }
@@ -318,6 +580,7 @@ public class InventoryManager extends JFrame implements ActionListener {
     @Override
     public void actionPerformed(ActionEvent e) {
         if (e.getSource() == btnAdd) {
+            if (!isAdmin()) return;
             String PID = txtFPID.getText().trim();
             String Name = txtFName.getText().trim();
             String Quanty = txtFQuantity.getText().trim();
@@ -330,34 +593,19 @@ public class InventoryManager extends JFrame implements ActionListener {
                     int qty = Integer.parseInt(Quanty);
                     double price = Double.parseDouble(Price);
                     addProduct(new Product(id, Name, qty, SID, price));
-                    if (!supplierMap.containsKey(SID)) {
-                        supplierMap.put(SID, new Supplier(SID, "N/A", "N/A"));
-                    }
-                    tableModel.setRowCount(0);
-                    for (Product p : productList) {
-                        tableModel.addRow(new Object[]{p.getId(), p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice()});
-                    }
-                    if (productList.isEmpty()) {
-                        lbReport.setText(" [No data]");
-                    } else if (hasLowStock(LOW_STOCK_THRESHOLD)) {
-                        lbReport.setText(" [low-stock]");
-                    } else {
-                        lbReport.setText(" [Fully Stocked]");
-                    }
-                    txtFPID.setText("");
-                    txtFName.setText("");
-                    txtFQuantity.setText("");
-                    txtFSID.setText("");
-                    txtFPrice.setText("");
+
+                    clearProductFields();
+                    JOptionPane.showMessageDialog(this, "Product successfully added and saved to database!");
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(this, "Product ID and Quantity must be whole numbers, Price must be a number", "Input Error", JOptionPane.ERROR_MESSAGE);
-                } catch (IllegalArgumentException ex) {
+                } catch (Exception ex) {
                     JOptionPane.showMessageDialog(this, ex.getMessage(), "Input Error", JOptionPane.ERROR_MESSAGE);
                 }
             } else {
                 JOptionPane.showMessageDialog(this, "Please fill in all product details first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
-        } else if (e.getSource() == btnUpdate){
+        } else if (e.getSource() == btnUpdate) {
+            if (!isAdmin()) return;
             int rowSelected = table.getSelectedRow();
             if (rowSelected != -1) {
                 String PID = txtFPID.getText().trim();
@@ -374,30 +622,15 @@ public class InventoryManager extends JFrame implements ActionListener {
                         double price = Double.parseDouble(Price);
                         if (id != selectedId) {
                             JOptionPane.showMessageDialog(this, "Product ID cannot be changed. Use the ID of the selected row", "Input Error", JOptionPane.ERROR_MESSAGE);
+                        } else if (updateProduct(id, Name, qty, SID, price)) {
+                            clearProductFields();
+                            JOptionPane.showMessageDialog(this, "Product Info has been updated in the database");
                         } else {
-                            updateProduct(id, Name, qty, SID, price);
-                            if (!supplierMap.containsKey(SID)) {
-                                supplierMap.put(SID, new Supplier(SID, "N/A", "N/A"));
-                            }tableModel.setRowCount(0);
-                            for (Product p : productList) {
-                                tableModel.addRow(new Object[]{p.getId(), p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice()});
-                            }if (productList.isEmpty()) {
-                                lbReport.setText(" [No data]");
-                            } else if (hasLowStock(LOW_STOCK_THRESHOLD)) {
-                                lbReport.setText(" [low-stock]");
-                            } else {
-                                lbReport.setText(" [Fully Stocked]");
-                            }
-                            txtFPID.setText("");
-                            txtFName.setText("");
-                            txtFQuantity.setText("");
-                            txtFSID.setText("");
-                            txtFPrice.setText("");
-                            JOptionPane.showMessageDialog(this, "Product Info has been updated");
+                            JOptionPane.showMessageDialog(this, "Product no longer exists (it may have been deleted by another user).", "Update Failed", JOptionPane.ERROR_MESSAGE);
                         }
                     } catch (NumberFormatException ex) {
                         JOptionPane.showMessageDialog(this, "Product ID and Quantity must be whole numbers, Price must be a number", "Input Error", JOptionPane.ERROR_MESSAGE);
-                    } catch (IllegalArgumentException ex) {
+                    } catch (Exception ex) {
                         JOptionPane.showMessageDialog(this, ex.getMessage(), "Input Error", JOptionPane.ERROR_MESSAGE);
                     }
                 } else {
@@ -407,43 +640,44 @@ public class InventoryManager extends JFrame implements ActionListener {
                 JOptionPane.showMessageDialog(this, "Please select a product first before updating", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
         } else if (e.getSource() == btnDelete) {
+            if (!isAdmin()) return;
             int indexSelected = table.getSelectedRow();
             if (indexSelected != -1) {
-                int id = Integer.parseInt(tableModel.getValueAt(indexSelected, 0).toString());
-                deleteProduct(id);
-                tableModel.setRowCount(0);
-                for (Product p : productList) {
-                    tableModel.addRow(new Object[]{p.getId(), p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice()});
-                }if (productList.isEmpty()) {
-                    lbReport.setText(" [No data]");
-                } else if (hasLowStock(LOW_STOCK_THRESHOLD)) {
-                    lbReport.setText(" [low-stock]");
-                } else {
-                    lbReport.setText(" [Fully Stocked]");
+                int confirm = JOptionPane.showConfirmDialog(this, "Delete the selected product?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
+                if (confirm == JOptionPane.YES_OPTION) {
+                    try {
+                        int id = Integer.parseInt(tableModel.getValueAt(indexSelected, 0).toString());
+                        if (deleteProduct(id)) {
+                            JOptionPane.showMessageDialog(this, "Product Info has been deleted from the database");
+                        } else {
+                            JOptionPane.showMessageDialog(this, "Product no longer exists (it may have been deleted by another user).", "Delete Failed", JOptionPane.ERROR_MESSAGE);
+                        }
+                    } catch (Exception ex) {
+                        JOptionPane.showMessageDialog(this, ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                    }
                 }
-                JOptionPane.showMessageDialog(this, "Product Info has been deleted");
             } else {
                 JOptionPane.showMessageDialog(this, "Please select a product first before deleting", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
-        } else if (e.getSource() == btnSearch){
+        } else if (e.getSource() == btnSearch) {
             String PID = txtFPID.getText().trim();
             String Name = txtFName.getText().trim();
             String SID = txtFSID.getText().trim();
             String Price = txtFPrice.getText().trim();
-            
-            if (!PID.isEmpty() || !Name.isEmpty() || !SID.isEmpty() || !Price.isEmpty()){
+
+            if (!PID.isEmpty() || !Name.isEmpty() || !SID.isEmpty() || !Price.isEmpty()) {
                 try {
                     Product found = null;
                     if (!PID.isEmpty()) {
                         found = searchById(Integer.parseInt(PID));
                         txtFPID.setText("");
-                    }else if(!Name.isEmpty()){
+                    } else if (!Name.isEmpty()) {
                         found = searchByName(Name);
                         txtFName.setText("");
-                    }else if (!SID.isEmpty()) {
+                    } else if (!SID.isEmpty()) {
                         found = searchBySupplier(SID);
                         txtFSID.setText("");
-                    }else if (!Price.isEmpty()) {
+                    } else if (!Price.isEmpty()) {
                         found = searchByPrice(Double.parseDouble(Price));
                         txtFPrice.setText("");
                     }
@@ -457,186 +691,32 @@ public class InventoryManager extends JFrame implements ActionListener {
                             }
                         }
                         JOptionPane.showMessageDialog(this, "Match found!");
-                    }else{
+                    } else {
                         table.clearSelection();
                         JOptionPane.showMessageDialog(this, "No matching product found!", "Input Error", JOptionPane.ERROR_MESSAGE);
                     }
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(this, "Product ID must be a whole number and Price must be a number", "Input Error", JOptionPane.ERROR_MESSAGE);
                 }
-            }else{
-                JOptionPane.showMessageDialog(this, "Enter a Product ID, Name,or Supplier ID to search", "ERROR Message", JOptionPane.ERROR_MESSAGE);
+            } else {
+                JOptionPane.showMessageDialog(this, "Enter a Product ID, Name, Supplier ID, or Price to search", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
-        }else if (e.getSource() == btnVReport) {
+        } else if (e.getSource() == btnStock) {
+            openChild(new StockFrame(this));
+        } else if (e.getSource() == btnUsers) {
+            if (!isAdmin()) return;
+            openChild(new UserFrame(this));
+        } else if (e.getSource() == btnRefresh) {
+            loadDataFromDatabase();
+        } else if (e.getSource() == btnVReport) {
+            loadDataFromDatabase();
             if (!productList.isEmpty()) {
-                new ReportWindow().setVisible(true);
+                openChild(new ReportFrame(this));
             } else {
                 JOptionPane.showMessageDialog(this, "Please add a product first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
         } else if (e.getSource() == btnVSupplier) {
-            new SupplierWindow().setVisible(true);
-        }
-    }
-    
-    private class ReportWindow extends JFrame implements ActionListener {
-
-        private JTextArea txtReport;
-        private JScrollPane reportScroll;
-        private JButton btnLowStock, btnRestock;
-
-        ReportWindow() {
-            setTitle("Stock Report");
-            setSize(650, 400);
-            setLayout(null);
-            setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-            setLocationRelativeTo(null);
-
-            btnLowStock = new JButton("Low-Stock Report");
-            btnLowStock.setBounds(10, 10, 150, 30);
-            add(btnLowStock);
-
-            btnRestock = new JButton("Restock Report");
-            btnRestock.setBounds(170, 10, 150, 30);
-            add(btnRestock);
-
-            txtReport = new JTextArea();
-            txtReport.setEditable(false);
-            reportScroll = new JScrollPane(txtReport);
-            reportScroll.setBounds(10, 50, 615, 300);
-            add(reportScroll);
-
-            txtReport.setText(generateLowStockReport(LOW_STOCK_THRESHOLD));
-
-            btnLowStock.addActionListener(this);
-            btnRestock.addActionListener(this);
-        }
-
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            if (e.getSource() == btnLowStock) {
-                txtReport.setText(generateLowStockReport(LOW_STOCK_THRESHOLD));
-            } else if (e.getSource() == btnRestock) {
-                txtReport.setText(generateRestockReport(LOW_STOCK_THRESHOLD, RESTOCK_TARGET));
-            }
-        }
-    }
-    
-    private class SupplierWindow extends JFrame implements ActionListener {
-
-        private DefaultTableModel supplierModel;
-        private JTable supplierTable;
-        private JScrollPane supplierScroll;
-        private JTextField txtSID, txtName, txtContact;
-        private JLabel lbSupSID, lbSupName, lbSupContact;
-        private JButton btnAddSupplier, btnUpdateSupplier;
-
-        SupplierWindow() {
-            String[] columns = {"Supplier ID", "Supplier Name", "Contact Info"};
-            supplierModel = new DefaultTableModel(columns, 0) {
-                @Override
-                public boolean isCellEditable(int row, int column) {
-                    return false;
-                }
-            };
-
-            setTitle("View & Manage Suppliers");
-            setSize(650, 400);
-            setLayout(null);
-            setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-            setLocationRelativeTo(null);
-
-            supplierTable = new JTable(supplierModel);
-            supplierScroll = new JScrollPane(supplierTable);
-            supplierScroll.setBounds(10, 10, 615, 200);
-            add(supplierScroll);
-
-            lbSupSID = new JLabel("Supplier ID:");
-            lbSupSID.setBounds(10, 225, 80, 30);
-            add(lbSupSID);
-
-            txtSID = new JTextField();
-            txtSID.setBounds(90, 225, 100, 30);
-            add(txtSID);
-
-            lbSupName = new JLabel("Name:");
-            lbSupName.setBounds(205, 225, 45, 30);
-            add(lbSupName);
-
-            txtName = new JTextField();
-            txtName.setBounds(250, 225, 150, 30);
-            add(txtName);
-
-            lbSupContact = new JLabel("Contact:");
-            lbSupContact.setBounds(415, 225, 60, 30);
-            add(lbSupContact);
-
-            txtContact = new JTextField();
-            txtContact.setBounds(475, 225, 150, 30);
-            add(txtContact);
-
-            btnAddSupplier = new JButton("Add Supplier");
-            btnAddSupplier.setBounds(150, 280, 150, 30);
-            add(btnAddSupplier);
-
-            btnUpdateSupplier = new JButton("Update Supplier Info");
-            btnUpdateSupplier.setBounds(320, 280, 180, 30);
-            add(btnUpdateSupplier);
-
-            btnAddSupplier.addActionListener(this);
-            btnUpdateSupplier.addActionListener(this);
-
-            supplierModel.setRowCount(0);
-            for (Supplier s : supplierMap.values()) {
-                supplierModel.addRow(new Object[]{s.getId(), s.getName(), s.getContactInfo()});
-            }
-        }
-
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            if (e.getSource() == btnAddSupplier) {
-                String SID = txtSID.getText().trim();
-                String sName = txtName.getText().trim();
-                String sContact = txtContact.getText().trim();
-                if (!SID.isEmpty() && !sName.isEmpty() && !sContact.isEmpty()) {
-                    if (supplierMap.containsKey(SID)) {
-                        JOptionPane.showMessageDialog(this, "Supplier ID already exists. Select it and use Update instead", "ERROR Message", JOptionPane.ERROR_MESSAGE);
-                    } else {
-                        supplierMap.put(SID, new Supplier(SID, sName, sContact));
-                        supplierModel.setRowCount(0);
-                        for (Supplier s : supplierMap.values()) {
-                            supplierModel.addRow(new Object[]{s.getId(), s.getName(), s.getContactInfo()});
-                        }
-                        txtSID.setText("");
-                        txtName.setText("");
-                        txtContact.setText("");
-                    }
-                } else {
-                    JOptionPane.showMessageDialog(this, "Please enter all supplier details first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
-                }
-            } else if (e.getSource() == btnUpdateSupplier) {
-                int selectedRow = supplierTable.getSelectedRow();
-                if (selectedRow != -1) {
-                    String sName = txtName.getText().trim();
-                    String sContact = txtContact.getText().trim();
-                    if (!sName.isEmpty() && !sContact.isEmpty()) {
-                        String SID = supplierModel.getValueAt(selectedRow, 0).toString();
-                        Supplier sup = supplierMap.get(SID);
-                        sup.setName(sName);
-                        sup.setContactInfo(sContact);
-                        supplierModel.setRowCount(0);
-                        for (Supplier s : supplierMap.values()) {
-                            supplierModel.addRow(new Object[]{s.getId(), s.getName(), s.getContactInfo()});
-                        }
-                        txtSID.setText("");
-                        txtName.setText("");
-                        txtContact.setText("");
-                    } else {
-                        JOptionPane.showMessageDialog(this, "Please enter the new name and contact info first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
-                    }
-                } else {
-                    JOptionPane.showMessageDialog(this, "Please select a supplier from the table first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
-                }
-            }
+            openChild(new SupplierFrame(this));
         }
     }
 }
