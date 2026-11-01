@@ -200,11 +200,6 @@ public class InventoryManager extends JFrame implements ActionListener {
         return currentUsername;
     }
 
-    private void openChild(JFrame frame) {
-        childWindows.add(frame);
-        frame.setVisible(true);
-    }
-
     @Override
     public void dispose() {
         for (JFrame f : childWindows) {
@@ -248,47 +243,19 @@ public class InventoryManager extends JFrame implements ActionListener {
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this, "Database Load Error: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
-        refreshTable();
-    }
-
-    private void refreshTable() {
+        //Refresh the table display
         tableModel.setRowCount(0);
         for (Product p : productList) {
             tableModel.addRow(new Object[]{p.getId(), p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice()});
         }
-        updateStockLabelStatus();
-    }
 
-    private void updateStockLabelStatus() {
+        //Update the stock status label
         if (productList.isEmpty()) {
             lbReport.setText(" [No data]");
         } else if (hasLowStock(LOW_STOCK_THRESHOLD)) {
             lbReport.setText(" [low-stock]");
         } else {
             lbReport.setText(" [Fully Stocked]");
-        }
-    }
-
-    private void clearProductFields() {
-        txtFPID.setText("");
-        txtFName.setText("");
-        txtFQuantity.setText("");
-        txtFSID.setText("");
-        txtFPrice.setText("");
-    }
-
-    private void validateProduct(String name, int qty, String supplierId, double price) {
-        if (name == null || name.trim().isEmpty()) {
-            throw new IllegalArgumentException("Product name cannot be empty.");
-        }
-        if (supplierId == null || supplierId.trim().isEmpty()) {
-            throw new IllegalArgumentException("Supplier ID cannot be empty.");
-        }
-        if (qty < 0) {
-            throw new IllegalArgumentException("Quantity cannot be negative.");
-        }
-        if (price < 0) {
-            throw new IllegalArgumentException("Price cannot be negative.");
         }
     }
 
@@ -303,7 +270,18 @@ public class InventoryManager extends JFrame implements ActionListener {
     }
 
     public void addProduct(Product p) {
-        validateProduct(p.getName(), p.getQuantity(), p.getSupplier(), p.getPrice());
+        if (p.getName() == null || p.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Product name cannot be empty.");
+        }
+        if (p.getSupplier() == null || p.getSupplier().trim().isEmpty()) {
+            throw new IllegalArgumentException("Supplier ID cannot be empty.");
+        }
+        if (p.getQuantity() < 0) {
+            throw new IllegalArgumentException("Quantity cannot be negative.");
+        }
+        if (p.getPrice() < 0) {
+            throw new IllegalArgumentException("Price cannot be negative.");
+        }
 
         try (Connection conn = DBConnection.getConnection()) {
             if (!supplierExists(conn, p.getSupplier())) {
@@ -337,7 +315,18 @@ public class InventoryManager extends JFrame implements ActionListener {
     }
 
     public boolean updateProduct(int id, String name, int qty, String supplier, double price) {
-        validateProduct(name, qty, supplier, price);
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Product name cannot be empty.");
+        }
+        if (supplier == null || supplier.trim().isEmpty()) {
+            throw new IllegalArgumentException("Supplier ID cannot be empty.");
+        }
+        if (qty < 0) {
+            throw new IllegalArgumentException("Quantity cannot be negative.");
+        }
+        if (price < 0) {
+            throw new IllegalArgumentException("Price cannot be negative.");
+        }
         int affected;
 
         try (Connection conn = DBConnection.getConnection()) {
@@ -593,8 +582,11 @@ public class InventoryManager extends JFrame implements ActionListener {
                     int qty = Integer.parseInt(Quanty);
                     double price = Double.parseDouble(Price);
                     addProduct(new Product(id, Name, qty, SID, price));
-
-                    clearProductFields();
+                    txtFPID.setText("");
+                    txtFName.setText("");
+                    txtFQuantity.setText("");
+                    txtFSID.setText("");
+                    txtFPrice.setText("");
                     JOptionPane.showMessageDialog(this, "Product successfully added and saved to database!");
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(this, "Product ID and Quantity must be whole numbers, Price must be a number", "Input Error", JOptionPane.ERROR_MESSAGE);
@@ -623,7 +615,11 @@ public class InventoryManager extends JFrame implements ActionListener {
                         if (id != selectedId) {
                             JOptionPane.showMessageDialog(this, "Product ID cannot be changed. Use the ID of the selected row", "Input Error", JOptionPane.ERROR_MESSAGE);
                         } else if (updateProduct(id, Name, qty, SID, price)) {
-                            clearProductFields();
+                            txtFPID.setText("");
+                            txtFName.setText("");
+                            txtFQuantity.setText("");
+                            txtFSID.setText("");
+                            txtFPrice.setText("");
                             JOptionPane.showMessageDialog(this, "Product Info has been updated in the database");
                         } else {
                             JOptionPane.showMessageDialog(this, "Product no longer exists (it may have been deleted by another user).", "Update Failed", JOptionPane.ERROR_MESSAGE);
@@ -702,21 +698,29 @@ public class InventoryManager extends JFrame implements ActionListener {
                 JOptionPane.showMessageDialog(this, "Enter a Product ID, Name, Supplier ID, or Price to search", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
         } else if (e.getSource() == btnStock) {
-            openChild(new StockFrame(this));
+            StockFrame stockWindow = new StockFrame(this);
+            childWindows.add(stockWindow);
+            stockWindow.setVisible(true);
         } else if (e.getSource() == btnUsers) {
             if (!isAdmin()) return;
-            openChild(new UserFrame(this));
+            UserFrame userWindow = new UserFrame(this);
+            childWindows.add(userWindow);
+            userWindow.setVisible(true);
         } else if (e.getSource() == btnRefresh) {
             loadDataFromDatabase();
         } else if (e.getSource() == btnVReport) {
             loadDataFromDatabase();
             if (!productList.isEmpty()) {
-                openChild(new ReportFrame(this));
+                ReportFrame reportWindow = new ReportFrame(this);
+                childWindows.add(reportWindow);
+                reportWindow.setVisible(true);
             } else {
                 JOptionPane.showMessageDialog(this, "Please add a product first", "ERROR Message", JOptionPane.ERROR_MESSAGE);
             }
         } else if (e.getSource() == btnVSupplier) {
-            openChild(new SupplierFrame(this));
+            SupplierFrame supplierWindow = new SupplierFrame(this);
+            childWindows.add(supplierWindow);
+            supplierWindow.setVisible(true);
         }
     }
 }
